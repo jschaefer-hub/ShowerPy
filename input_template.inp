@@ -6,10 +6,10 @@ NSHOW 1
 PRMPAR {primary_particle} 
 ERANGE {primary_energy} {primary_energy}
 THETAP {zenith_angle} {zenith_angle}
-PHIP 0. 360.
+PHIP {azimuth_angle} {azimuth_angle}
 *
 FIXHEI  0.  0 
-FIXCHI  0.
+FIXCHI  0
 MAGNET  11.930 -25.310       // Magnetic field (H, Zdown)
 ARRANG  -12.750
 *
@@ -20,6 +20,7 @@ ECUTS  0.3  0.1  0.020  0.020
 *MUADDI  F
 *MUMULT  T // Additional Muon information
 ELMFLG T T
+CSCAT 1 0. 0.
 {ext_atmosphere}
 *
 OBSLEV {observation_level}

@@ -44,6 +44,7 @@ class CorsikaRunner:
             "primary_energy": None,
             "observation_level": None,
             "zenith_angle": None,
+            "azimuth_angle": None,
             "seeds": None,
             "path_output": None,
             "ext_atmosphere": None
@@ -91,6 +92,7 @@ class CorsikaRunner:
         observation_level=0 * u.m,
         run_number=1,
         zenith_angle=0 * u.deg,
+        azimuth_angle = 0 * u.deg,
         random_seeds=True,
         path_output=None,
         ext_atmosphere=None
@@ -121,6 +123,7 @@ class CorsikaRunner:
         self.current_config["primary_particle"] = self._parse_particletype(primary_particle)
         self.current_config["primary_energy"] = primary_energy.to(u.GeV)
         self.current_config["zenith_angle"] = zenith_angle.to(u.deg)
+        self.current_config["azimuth_angle"] = azimuth_angle.to(u.deg)
         self.current_config["observation_level"] = observation_level.to(u.cm)
         self.current_config["path_output"] = path_output or os.getcwd()
         
@@ -163,6 +166,7 @@ class CorsikaRunner:
             primary_particle=self.current_config["primary_particle"],
             primary_energy=self.current_config["primary_energy"].value,
             zenith_angle=self.current_config["zenith_angle"].value,
+            azimuth_angle=self.current_config["azimuth_angle"].value,
             observation_level=self.current_config["observation_level"].value,
             output_directory=os.path.join(f'./{self.temp_output_dir}/', "sim_"),
             ext_atmosphere=self.current_config["ext_atmosphere"],
@@ -239,6 +243,11 @@ class CorsikaRunner:
 
         # Restore the original working directory
         os.chdir(_current_path)
+        
+        # Delete the output dir if it exists
+        os.system(
+            f"rm -rf {self.current_config["path_output"]}"
+        )
         
         # Make sure the user output directory exists
         os.makedirs(self.current_config["path_output"], exist_ok=True)  # Create the folder
