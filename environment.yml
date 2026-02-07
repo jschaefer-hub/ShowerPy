@@ -5,15 +5,18 @@ dependencies:
   - astropy=7.0.1
   - astropy-base=7.0.1
   - astropy-iers-data=0.2025.2.10.0.33.26
-  - numpy=2.2.2
-  - pandas=2.2.3
-  - matplotlib=3.10.0
-  - matplotlib-base=3.10.0
-  - matplotlib-inline=0.1.7
+  - jupyter
   - jupyter_client=8.6.3
   - jupyter_core=5.7.2
   - jupyterlab_widgets=3.0.13
+  - matplotlib=3.10.0
+  - matplotlib-base=3.10.0
+  - matplotlib-inline=0.1.7
+  - notebook
+  - numpy=2.2.2
+  - pandas=2.2.3
+  - pip
   - pip:
-      - corsikaio==0.5.0
-      - eventio==1.14.0
-      - zstandard==0.23.0
+    - corsikaio==0.6.1
+    - eventio==2.1.0
+    - zstandard==0.23.0
