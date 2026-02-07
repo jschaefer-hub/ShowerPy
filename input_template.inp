@@ -28,6 +28,6 @@ OBSLEV {observation_level}
 PLOTSH T
 CERSIZ 1
 *
-TELESCOPE 0. 0. 0. 1000.E2 
+TELESCOPE 0. 0. 0. 5000.E2 
 TELFIL {output_directory}cherenkov_iact
 DIRECT {output_directory}
