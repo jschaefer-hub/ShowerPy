@@ -5,6 +5,8 @@ test.ipynb
 *.pdf
 *.png 
 
+# Ignore ZSH on linux
+zsh
 # MacOS directory files 
 *.DS_Store
 *._DS_Store 
