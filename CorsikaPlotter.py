@@ -26,9 +26,21 @@ class CorsikaPlotter:
         Args:
             path_data (str): Path to the directory containing CORSIKA simulation output.
         """
+
+        
         self.path_data = path_data
-        self.cherenkov_photons = None
-        self.particle_tracks = None
+        self.cherenkov_photons = None   # stores the dataframe
+        self.particle_tracks = None     # stores the dataframe
+        
+        # Shower parameters (extracted from eventio header)
+        self.zenith_deg = None
+        self.azimuth_deg = None
+        self.first_interaction_height_cm = None
+        self.impact_point_x = 0.0  # Shower core X offset from telescope [cm]
+        self.impact_point_y = 0.0  # Shower core Y offset from telescope [cm]
+        self.primary_particle_id = None # Primary particle ID used in the simulation
+        self.primary_energy = None # Simulated primary energy of the primary particle [GeV]
+        self.observation_level = None # Simulated observation level [cm] asl.
         
         # Mapping between CORSIKA particle ID and particle name
         self.particle_map = {
@@ -78,6 +90,18 @@ class CorsikaPlotter:
         # Load data into pandas DataFrames
         self.cherenkov_photons = self._parse_cherenkov_data()
         self.particle_tracks = self._parse_particle_data()
+        
+        # Transform Cherenkov photon coordinates to particle track coordinate system
+        # Note: Cherenkov photons are stored in a seperate coordinate system around he impact point
+        # This adds the core offset so photons appear at the shower core location
+        self._transform_cherenkov_to_particle_coords()
+
+    def get_particle_name_by_id(self, particle_id):
+        """Returns the name of the particle given its CORSIKA ID."""
+        for name, p_id in self.particle_map.items():
+            if p_id == particle_id:
+                return name
+        return f"unknown({particle_id})"
 
     def _check_available_files(self):
         """
@@ -98,7 +122,9 @@ class CorsikaPlotter:
             "cherenkov_iact": "cherenkov_data",
         }
 
-        # Get paths of files
+        # ------------------------
+        #  Check for each file
+        # ------------------------
         for file in files:
             full_path = os.path.join(self.path_data, file)
             if os.path.isfile(full_path):
@@ -106,6 +132,9 @@ class CorsikaPlotter:
                     if file.endswith(key):
                         self.file_paths[attr] = full_path
 
+        # ------------------------
+        #  User output
+        # ------------------------
         print("Looking for available files:")
         # Get longest filetype name so everything is printed nicely!
         max_key_length = max(map(len, self.file_paths.keys()))
@@ -121,25 +150,72 @@ class CorsikaPlotter:
 
     def _parse_cherenkov_data(self):
         """
-        Parses Cherenkov photon data from the CORSIKA output.
+        Parses Cherenkov photon data and extras shower geometry from header.
 
         Returns:
             pd.DataFrame: DataFrame containing Cherenkov photon information.
-
-        Raises:
-            ValueError: If the Cherenkov data file is missing.
         """
+
         print("\nParsing Cherenkov photon data")
 
-        if self.file_paths["cherenkov_data"] is None:
-            raise ValueError("Cannot parse Cherenkov data as file was not found!")
-
+        # Open up the first event
+        # Note: we do not expect more than one event here
         f = eventio.IACTFile(self.file_paths["cherenkov_data"])
         event = next(iter(f))
 
+        # ------------------------
+        #  Parse event header
+        # ------------------------
+
+        # Extract shower geometry from event header
+        # Note:  event header is a structured numpy array with named fields
+        # can be listed with print(event.header.dtype.names)
+        # for i in event.header.dtype.names:
+        #     print(i)
+        # return 
+
+        event_header = event.header
+
+        # Get input parameters
+        self.zenith_deg = np.degrees(float(event_header['zenith']))
+        self.azimuth_deg = np.degrees(float(event_header['azimuth']))
+        self.primary_particle_id = int(event_header['particle_id'])
+        self.primary_energy = float(event.header['total_energy'])
+        self.observation_level = float(event.header['observation_height'][0])
+
+        # Take absolute value to get the height above ground
+        # TODO: For some reason this is negative -> find out why?
+        self.first_interaction_height_cm = abs(float(event_header['first_interaction_height']))
+        
+        # ------------------------
+        #  User output
+        # ------------------------
+
+        # Primary particle and energy
+        print(
+            f"\t-> {self.get_particle_name_by_id(self.primary_particle_id).title()} "
+            f"with {self.primary_energy} GeV energy"
+        )
+        # Arival direction
+        print(
+            f"\t-> Arriving from from zenith={self.zenith_deg:.1f}°,"
+            f"azimuth={self.azimuth_deg:.1f}°"
+        )
+        # First interaction height 
+        print(
+            f"\t-> First interaction height: {self.first_interaction_height_cm * 1e-5:.1f} km"
+        )
+        # Observation level
+        print(
+            f"\t-> Observation level: {self.observation_level * 1e-5:.1f} km"
+        )
+
+        # ------------------------
+        #  Create Dataframe
+        # ------------------------
         # Extract telescope position and photon bunches
         # Note: telescope position not interesting if we only have a single one
-        telescope_position = pd.DataFrame(f.telescope_positions)
+        # telescope_position = pd.DataFrame(f.telescope_positions)
         cherenkov_photons = pd.DataFrame(event.photon_bunches[0])
         cherenkov_photons.columns = [
             "x_impact_cm",
@@ -152,9 +228,7 @@ class CorsikaPlotter:
             "wavelength_nm",
         ]
 
-        # Remove incorrectly parsed column
-        cherenkov_photons.drop(columns=["photons"], inplace=True)
-
+        # Note: 'photons' is often a weight/count in the bunch, don't drop if you need density accuracy!
         return cherenkov_photons
 
     def _parse_particle_data(self):
@@ -166,6 +240,7 @@ class CorsikaPlotter:
         """
         print("\nParsing particle track data")
 
+        # This is the mapping of the data in the fortran files for each data record
         columns = [
             "particle_id",
             "energy_gev",
@@ -179,6 +254,11 @@ class CorsikaPlotter:
             "t_end",
         ]
 
+        # ------------------------
+        #  Parse binary files
+        # ------------------------
+
+        # Open up the dataframe which later will contain all data
         particle_tracks_df = pd.DataFrame(columns=columns)
 
         for particle_file in list(self.file_paths.values())[:-1]:
@@ -187,20 +267,26 @@ class CorsikaPlotter:
 
             print(f"\t-> Reading {os.path.basename(particle_file)}")
 
+            # Iterate over the Fortran file and parse data in accordance
+            # This is based on the official CORSIKA/EVENTIO Documentation
             tracks = []
             with open(particle_file, "rb") as f:
-                # Iterate over the Fortran file and parse data in accordance
-                # with the official CORSIKA/EVENTIO Documentation
                 while True:
+
+                    # Read first four bites and parse as integer to know how much
+                    # Data we are gonna expect
                     marker1_bytes = f.read(4)
                     if len(marker1_bytes) < 4:
                         break
-
                     marker1 = struct.unpack("i", marker1_bytes)[0]
+                    
+                    # Now we read the datachunk of the determined size
                     data_bytes = f.read(marker1)
                     if len(data_bytes) < marker1:
                         break
 
+                    # Check if we have reached the Endmarker for the data record
+                    # Should the the same as marker 1
                     marker2_bytes = f.read(4)
                     if len(marker2_bytes) < 4:
                         break
@@ -209,16 +295,100 @@ class CorsikaPlotter:
                     if marker1 != marker2:
                         raise ValueError(f"Fortran record markers do not match: {marker1} vs {marker2}")
 
+                    # Parse out the data as 10 32-bit integers (order see above)
                     tracks.append(struct.unpack("10f", data_bytes))
 
+            # Skip all other data
             if not tracks:
                 continue
 
+            # ------------------------
+            #  Create Dataframe
+            # ------------------------
+
             # Form a pandas dataframe and discard nan entries
             temp_df = pd.DataFrame(tracks, columns=columns).dropna(axis=1, how="all")
-            particle_tracks_df = pd.concat([particle_tracks_df, temp_df], ignore_index=True)
+
+            if particle_tracks_df.empty:
+                particle_tracks_df = temp_df
+            else:
+                particle_tracks_df = pd.concat([particle_tracks_df, temp_df], ignore_index=True)
 
         return particle_tracks_df
+
+    def _transform_cherenkov_to_particle_coords(self):
+        """
+        Transforms Cherenkov photon coordinates to the particle track coordinate system.
+        
+        Cherenkov photon impact positions are originally centered around the impact point.
+        This method adds the extrapolated impact point coordinates to the cherenkov data
+        to place them at the shower core location in the particle track coordinate system.
+        """
+        print('\nCorrecting Cherenkov coordinate system')
+
+        # ------------------------
+        # Check for requirements
+        # ------------------------
+        
+        # We must have the cherenkov and particle track data
+        if self.cherenkov_photons is None or self.particle_tracks.empty:
+            print("\t-> Error: Cherenkov and particle track data not yet parsed")
+            return
+            
+        # We also need to know the shower zenith and azimuth
+        if self.zenith_deg is None or self.azimuth_deg is None:
+             print("\t-> Error: Shower geometry not available, skipping coordinate transform.")
+             return
+
+        # ------------------------
+        #  Determine impact point
+        # ------------------------
+
+        # Note:
+        # Use the primary particle's trajectory to find the exact impact point on ground
+        # We use the first entry of the primary particle type to determine its travel direction
+        # We then use two points to define the shower axis line and intersect with observation level
+        
+        # Find primary particle in dataframe
+        # Note: primary will always start at time 0
+        primary = self.particle_tracks[
+            (self.particle_tracks["t_start"] == 0)
+            ]
+
+        if not (len(primary) == 1):
+            print(f'ERROR: Could not uniquely identify primary particle, found {len(primary)} matching criteria')
+            return
+
+        x1, y1, z1 = primary[["x_start", "y_start", "z_start"]].iloc[0]
+        # print(x1, y1, z1)
+        x2, y2, z2 = primary[["x_end", "y_end", "z_end"]].iloc[0]
+        # Using :N_TOTAL_DIGITS.DECIMALf
+        print(f"\t-> Primary trajectory: Start=({x1*1e-5:6.1f}, {y1*1e-5:6.1f}, {z1*1e-5:6.1f}) km")
+        print(f"\t                       End  =({x2*1e-5:6.1f}, {y2*1e-5:6.1f}, {z2*1e-5:6.1f}) km")
+        
+        # Direction vector
+        dx = x2 - x1
+        dy = y2 - y1
+        dz = z2 - z1
+        
+        # Intersect with observation level 
+        z_obs = self.observation_level  # Observation level at sea level
+        
+        # Parametric line: (x, y, z) = (x1, y1, z1) + t * (dx, dy, dz)
+        # At observation level: z_obs = z1 + t * dz
+        # t = (z_obs - z1) / dz
+        t = (z_obs - z1) / dz
+        
+        # Calculate impact point
+        self.impact_point_x = x1 + t * dx
+        self.impact_point_y = y1 + t * dy
+        
+        print(f"\t-> Shower axis impact point: x={self.impact_point_y*1e-5:.2f} km, y={self.impact_point_y*1e-5:.2f} km")
+
+        print(f"\t-> Shifting Cherenkov photon coordinates")
+        # Apply the shift to the cherenkov data
+        self.cherenkov_photons["x_impact_cm"] += self.impact_point_x
+        self.cherenkov_photons["y_impact_cm"] += self.impact_point_y
 
     def _cartesian_to_polar(self, x, y):
         """Convert Cartesian coordinates (x, y) to polar coordinates (r, theta)."""
@@ -313,6 +483,9 @@ class CorsikaPlotter:
         ax.add_collection(LineCollection(
             all_segments, color="black", alpha=alpha, linewidth=0.08, zorder=1
         ))
+
+        # Autoscale to ensure all data is visible
+        ax.autoscale()
 
         
         # Set plot limits and add legend
