@@ -9,7 +9,7 @@ All data is available as pandas DataFrames, allowing you to create custom plots 
 ![software flowchart](media/software_flowchart.drawio.svg)
 `
 # Attribution 
-The ShowerPy classes use [pyeventio](https://github.com/cta-observatory/pyeventio) and [pycorsikaio](https://github.com/cta-observatory/pycorsikaio) to load the fortran files produced by CORSIKA. Further, demo install on woodycap uses CORSIKA 7.8000 (Released February 2025). For more information visit the [official website](https://www.iap.kit.edu/corsika/99.php). 
+The ShowerPy classes use [pyeventio](https://github.com/cta-observatory/pyeventio) and [pycorsikaio](https://github.com/cta-observatory/pycorsikaio) to load the fortran files produced by CORSIKA. For more information visit the [official website](https://www.iap.kit.edu/corsika/99.php). 
 You can also cite the showerpy releases using the [Zenodo DOI](https://doi.org/10.5281/zenodo.15340974).
 # 1. Getting Started  
 
@@ -21,7 +21,7 @@ mamba activate showerpy
 Then, open the demo notebook `Demo.ipynb`, which provides an introduction to using ShowerPy.
 
 # 2. Simulating Showers
-As shown in the demo notebook, the `CorsikaRunner` class is used to generate the necessary simulations. If you’re running the demo on `woodycap5` or `woodycap6`, no additional setup is required, as the CORSIKA executable points to a public installation.
+As shown in the demo notebook, the `CorsikaRunner` class is used to generate the necessary simulations.
 
 # 3. Compiling CORSIKA 
 
@@ -78,7 +78,7 @@ Then, press *Enter* again and confirm with `yes` to accept the selected CORSIKA 
 
 Finally, to begin the compilation process select `f` and press *Enter* again. 
 
-To test the successful compilation you can execute the binary `./run/corsika78000Darwin_QGSIII_urqmd`. If you are greeted with the CORSIKA message, everything has compiled successfully. 
+To test the successful compilation you can execute the binary `./run/corsika7XXXXXDarwin_QGSIII_urqmd`. If you are greeted with the CORSIKA message, everything has compiled successfully. 
 
 # 4. Atmospheric profile 
 By default, the internal atmospheric profile is used. If you want to use an external, site-specific profile, you can specify this when configuring the simulation run (see demo notebook). For [H.E.S.S. members](https://www.mpi-hd.mpg.de/hfm/~bernlohr/HESS/) and [CTA members](https://www.mpi-hd.mpg.de/hfm/CTA/MC/), such files (e.g., `atmprof10.dat`) are provided and are typically based on local balloon flight measurements.
