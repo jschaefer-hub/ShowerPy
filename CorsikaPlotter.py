@@ -707,7 +707,19 @@ class CorsikaPlotter:
         
         return ax
             
-    def plot_particle_height_distribution(self, ax=None, color_dict=None):
+    def plot_particle_height_distribution(self, ax=None, color_dict=None, height_steps=0.1):
+        """
+        Plots the distribution of particle starting heights.
+
+        Args:
+            ax (matplotlib.axes.Axes, optional): Axis object to plot on. Defaults to None.
+            color_dict (dict, optional): Dictionary mapping particle names to colors.
+                Example: {"proton": "red", "electron": "blue"}.
+            height_steps (float, optional): Step size for height bins in km. Defaults to 0.1.
+
+        Returns:
+            matplotlib.axes.Axes: The axis containing the plot.
+        """
         
         if ax is None:
             _, ax = plt.subplots(figsize=(7, 4))
@@ -719,7 +731,7 @@ class CorsikaPlotter:
         
         #plot distribution of all particles first
         n_particles, bins = np.histogram(self.particle_tracks.z_start,
-                                        bins = np.arange(0,shower_start,0.1)*1e5)
+                                        bins = np.arange(0,shower_start, height_steps)*1e5)
         bin_centres = (bins[:-1]+bins[1:])/2.
 
         ax.plot(bin_centres *1e-5, n_particles, c = 'black')
@@ -751,7 +763,7 @@ class CorsikaPlotter:
 
                 # Create the histogram 
                 n_particles, bins = np.histogram(subset.z_start,
-                                                bins = np.arange(0,shower_start,0.1)*1e5
+                                                bins = np.arange(0,shower_start,height_steps)*1e5
                 )
                 
                 # Now we are done with all subnames and plot things 
