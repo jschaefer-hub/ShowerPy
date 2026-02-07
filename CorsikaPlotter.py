@@ -5,8 +5,9 @@ import numpy as np
 import pandas as pd
 import eventio
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 from matplotlib.collections import LineCollection
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 class CorsikaPlotter:
     """
@@ -27,20 +28,26 @@ class CorsikaPlotter:
             path_data (str): Path to the directory containing CORSIKA simulation output.
         """
 
-        
+        # ------------------------
+        # Paths and Dataframes
+        # ------------------------
         self.path_data = path_data
         self.cherenkov_photons = None   # stores the dataframe
         self.particle_tracks = None     # stores the dataframe
         
-        # Shower parameters (extracted from eventio header)
+        # ------------------------
+        # Simulation parameters
+        # ------------------------
+        # Note: Lots of them will be populated from the eventio file header
         self.zenith_deg = None
         self.azimuth_deg = None
+        # TODO: Corsika stores everything in cm ... maybe I should change the internal logic to m at some point?
         self.first_interaction_height_cm = None
         self.impact_point_x = 0.0  # Shower core X offset from telescope [cm]
         self.impact_point_y = 0.0  # Shower core Y offset from telescope [cm]
-        self.primary_particle_id = None # Primary particle ID used in the simulation
         self.primary_energy = None # Simulated primary energy of the primary particle [GeV]
-        self.observation_level = None # Simulated observation level [cm] asl.
+        self.primary_particle_id = None # Primary particle ID used in the simulation
+        self.observation_level = None   # Simulated observation level [cm] a.s.l.
         
         # Mapping between CORSIKA particle ID and particle name
         self.particle_map = {
@@ -85,6 +92,7 @@ class CorsikaPlotter:
             "cherenkov_data": None,
         }
 
+        # Check if we have all files and load their paths
         self._check_available_files()
 
         # Load data into pandas DataFrames
@@ -102,6 +110,40 @@ class CorsikaPlotter:
             if p_id == particle_id:
                 return name
         return f"unknown({particle_id})"
+
+    def _get_particle_ids_from_selection(self, selection_key):
+        """
+        Parses a selection key (e.g. 'muon + antimuon', 'lepton', 'hadron')
+        and returns a list of corresponding CORSIKA particle IDs.
+        
+        Args:
+            selection_key (str): The key from the color_dict, describing particles.
+            
+        Returns:
+            list: List of unique particle IDs.
+        """
+        # Split by '+' to handle combinations
+        subnames = [name.strip() for name in selection_key.split('+')]
+        particle_ids = set()
+
+        for name in subnames:
+            if name == "lepton":
+                particle_ids.add(2)
+                particle_ids.add(3)
+                particle_ids.add(5)
+                particle_ids.add(6)
+            elif name == "hadron":
+                # All particles except Gamma (1), Electron (2), Positron (3), Muon (5), Antimuon (6)
+                excluded_ids = {1, 2, 3, 5, 6}
+                for p_name, p_id in self.particle_map.items():
+                    if p_id not in excluded_ids:
+                        particle_ids.add(p_id)
+            elif name in self.particle_map:
+                particle_ids.add(self.particle_map[name])
+            else:
+                print(f"Warning: Unknown particle type '{name}', skipping.")
+        
+        return list(particle_ids)
 
     def _check_available_files(self):
         """
@@ -224,7 +266,7 @@ class CorsikaPlotter:
             "cos_incident_y",
             "time_since_first_interaction_ns",
             "emission_height_asl_cm",
-            "photons",
+            "photons", # Note: This is the expected number of photons in this specific bunch.
             "wavelength_nm",
         ]
 
@@ -383,7 +425,7 @@ class CorsikaPlotter:
         self.impact_point_x = x1 + t * dx
         self.impact_point_y = y1 + t * dy
         
-        print(f"\t-> Shower axis impact point: x={self.impact_point_y*1e-5:.2f} km, y={self.impact_point_y*1e-5:.2f} km")
+        print(f"\t-> Shower axis impact point: x={self.impact_point_x*1e-5:.2f} km, y={self.impact_point_y*1e-5:.2f} km")
 
         print(f"\t-> Shifting Cherenkov photon coordinates")
         # Apply the shift to the cherenkov data
@@ -422,7 +464,7 @@ class CorsikaPlotter:
         shower_start = hasl[np.argmax(nparticles > 10) - 1]
         return shower_start 
     
-    def plot_side_profile(self, ax=None, alpha=0.1, color_dict=None):
+    def plot_side_profile(self, ax=None, alpha=0.4, color_dict=None):
         """
         Plots a side profile of the particle tracks with optional color coding.
 
@@ -445,17 +487,21 @@ class CorsikaPlotter:
             color_dict = {}
 
         legend_handles = []
-        colored_particle_ids = []
+        colored_particle_ids = set() # Use a set for faster lookup
+
         # Iterate over the provided colors and plot those separately
-        for particle_name, color in color_dict.items():
-            if particle_name not in self.particle_map:
-                print(f"Warning: Unknown particle type '{particle_name}', skipping.")
+        for particle_selection, color in color_dict.items():
+            
+            # Get list of particle IDs for this selection
+            current_ids = self._get_particle_ids_from_selection(particle_selection)
+            if not current_ids:
                 continue
+
+            # Add these IDs to the set of colored particles so they aren't plotted in black later
+            colored_particle_ids.update(current_ids)
             
-            particle_id = self.particle_map[particle_name]
-            colored_particle_ids.append(colored_particle_ids)
-            
-            subset = self.particle_tracks[self.particle_tracks["particle_id"] == particle_id]
+            # Filter tracks for these IDs
+            subset = self.particle_tracks[self.particle_tracks["particle_id"].isin(current_ids)]
             
             if subset.empty:
                 continue
@@ -467,22 +513,25 @@ class CorsikaPlotter:
             ])
             
             ax.add_collection(LineCollection(
-                segments, color=color, alpha=alpha, linewidth=0.2, label=particle_name, zorder=2
+                segments, color=color, alpha=alpha, linewidth=0.5, label=particle_selection, zorder=2
             ))
             
             # Add solid color line for legend
-            legend_handles.append(plt.Line2D([0], [0], color=color, lw=2, label=particle_name))
+            legend_handles.append(plt.Line2D([0], [0], color=color, lw=2, label=particle_selection))
         
         # All other particle types segments will be shown in black
+        # Filter where particle_id is NOT in colored_particle_ids
         filtered_df = self.particle_tracks[~self.particle_tracks["particle_id"].isin(colored_particle_ids)].copy()
-        all_segments = np.array([
-            [[row["x_start"] * 1e-5, row["z_start"] * 1e-5],
-            [row["x_end"] * 1e-5, row["z_end"] * 1e-5]]
-            for _, row in filtered_df.iterrows()
-        ])
-        ax.add_collection(LineCollection(
-            all_segments, color="black", alpha=alpha, linewidth=0.08, zorder=1
-        ))
+        
+        if not filtered_df.empty:
+            all_segments = np.array([
+                [[row["x_start"] * 1e-5, row["z_start"] * 1e-5],
+                [row["x_end"] * 1e-5, row["z_end"] * 1e-5]]
+                for _, row in filtered_df.iterrows()
+            ])
+            ax.add_collection(LineCollection(
+                all_segments, color=color_dict.get('default', 'black'), alpha=alpha, linewidth=0.08, zorder=1
+            ))
 
         # Autoscale to ensure all data is visible
         ax.autoscale()
@@ -497,53 +546,106 @@ class CorsikaPlotter:
         ax.set_ylim(0, shower_start)
 
         return ax
-        
-    def plot_cher_distribution(self, ax=None, nbins=1000, vmax=None):
-        """
-        Plots the Cherenkov photon distribution on the observation level.
 
-        Args:
-            ax (matplotlib.axes.Axes, optional): Axis object to plot on. Defaults to None.
-            nbins (int, optional): Number of bins for histogram. Defaults to 1000.
-            vmax (float, optional): Maximum value for color scaling.
+    def plot_cher_distribution(self, ax=None, nbins=300, vmin=None, vmax=None, 
+                                    show_colorbar=True, use_log=False, auto_center=True,
+                                    cmap="binary"):
+            """
+            Plots the Cherenkov photon distribution on ground
+            
+            Args:
+                use_log (bool): Use logarithmic color scaling. Defaults to True.
+                auto_center (bool): Automatically center the plot on the photon pool.
+                cmap (str): Matplotlib colormap name. Defaults to "viridis".
+            """
+            if ax is None:
+                _, ax = plt.subplots(figsize=(7, 6))
 
-        Returns:
-            matplotlib.axes.Axes: The axis containing the plot.
-        """
-        if ax is None:
-            _, ax = plt.subplots(figsize=(5, 5))
+            # ------------------------
+            #  Unit conversion
+            # ------------------------
+            # Convert coordinates to km and get weights
+            x_km = self.cherenkov_photons["x_impact_cm"] * 1e-5
+            y_km = self.cherenkov_photons["y_impact_cm"] * 1e-5
+            weights = self.cherenkov_photons["photons"]
 
-        # Calculate a guestimate for correct color-bar scale based on 
-        # percentile containment
-        if not vmax:
-            # Create preliminary histogram to get photon distribution on 2D plane
-            # Note: must have same settings as later plot histogram
-            nphotons, _, _ = np.histogram2d(self.cherenkov_photons['x_impact_cm']*1e-5, 
-                                            self.cherenkov_photons['y_impact_cm']*1e-5,
-                                            bins = nbins
+
+            # ------------------------
+            #  Autocentering
+            # ------------------------
+            if auto_center:
+                # Calculate the centre of gravity for the photon distribution
+                total_w = np.sum(weights)
+                cx = np.sum(x_km * weights)/ total_w
+                cy = np.sum(y_km * weights)/ total_w
+
+                # Set a 2km x 2km window around the core
+                # TODO: this should be adjustable
+                ax.set_xlim(cx - 1.0, cx + 1.0)
+                ax.set_ylim(cy - 1.0, cy + 1.0)
+
+            # ------------------------
+            #  Scaling and Norm
+            # ------------------------
+            # Bin the data and calculate the 99.9 percentile as vmax
+            if vmax is None:
+                hist_temp, _, _ = np.histogram2d(x_km, y_km, bins=nbins, weights=weights)
+                vmax = np.percentile(hist_temp[hist_temp > 0], 99.9)
+            
+
+            if use_log:
+                # TODO: maybe this can be done prettier?
+                if not vmin:
+                    vmin = 1.0
+                else:
+                    pass
+                norm = colors.LogNorm(vmin=vmin, vmax=vmax)
+            else:
+                if not vmin:
+                    vmin = 0
+                else:
+                    pass
+                norm = colors.Normalize(vmin=vmin, vmax=vmax)
+
+
+            # ------------------------
+            #  Create Plot
+            # ------------------------
+            
+            # Create our histogram
+            mesh = ax.hist2d(
+                x_km,
+                y_km,
+                bins=nbins,
+                weights=weights,
+                norm=norm,
+                cmap=cmap,
             )
+            
+            # 
+            ax.set_aspect("equal", adjustable='box') # important or else the cherenkov pool will not look right
+            ax.set_xlabel("X Position [km]")
+            ax.set_ylabel("Y Position [km]")
 
-            # Now we create a histogram of photons/pixel with wider binning
-            (counts, photons_per_bin) = np.histogram(nphotons.flatten(), bins = 300)
-            
-            total_photons = counts.sum()
-            
-            fractional_containment = [counts[:index].sum()/total_photons for index in range(len(counts))]
-            
-            vmax = photons_per_bin[np.argmin(np.abs(np.array(fractional_containment)-0.999999))]
-            
-            
-        ax.hist2d(
-            self.cherenkov_photons["x_impact_cm"] * 1e-5,
-            self.cherenkov_photons["y_impact_cm"] * 1e-5,
-            bins=nbins,
-            vmin=0,
-            vmax=vmax,
-            cmap="binary",
-        )
-        ax.set_aspect("equal")
 
-        return ax
+            # Note: This took longer than expected ^^ 
+            if show_colorbar:
+                from mpl_toolkits.axes_grid1 import make_axes_locatable
+
+                # Get the exakt size of our plot 
+                divider = make_axes_locatable(ax)
+
+                # Take small part of the plot and add an axis to it
+                cax = divider.append_axes("right", size="5%", pad=0.1)
+
+                # Now we can add our colorbar
+                cbar = plt.colorbar(mesh[3], cax=cax)
+
+                # Give it a label and set it :) 
+                label = "Number of photons"
+                cbar.set_label(label, rotation=270, labelpad=15)
+
+            return ax
     
     def plot_ground_photon_density(self, ax=None, nbins = 200, color = 'black'):
         """Determines and plots the Cherenkov photon density on ground with 
@@ -558,6 +660,9 @@ class CorsikaPlotter:
             matplotlib.axes.Axes: The axis containing the plot.
         """        
         
+        if self.zenith_deg > 0:
+            print("WARNING: This implementation only works for showers from 0 deg Zenith")
+            return
         if ax is None:
             _, ax = plt.subplots(figsize=(3, 6))
             
@@ -630,48 +735,35 @@ class CorsikaPlotter:
         
 
         if color_dict:
-            for particle_name, color in color_dict.items():
+            for particle_selection, color in color_dict.items():
                 
-                # In case the name contains more particles i.e electron+positron
-                # We get the subnames
-                subnames = particle_name.replace(' ', '').split('+')
-                    
-                # Stores total number of particles for each color specification
-                all_particles = 0
-                group_name = ''
-                for name in subnames:
-                    
-                    # Yeah ... check if we even have the particle that have been 
-                    # requested
-                    if name not in self.particle_map:
-                        print(f"Warning: Unknown particle type '{name}'.")
-                        raise()
-                    
-                    # Get the CORSIKA ID
-                    particle_id = self.particle_map[name]
-                    
-                    # Select all entries with this particle ID
-                    subset = self.particle_tracks[self.particle_tracks["particle_id"] == particle_id]
-                    
-                    # Create the histogram 
-                    n_particles, bins = np.histogram(subset.z_start,
-                                                    bins = np.arange(0,shower_start,0.1)*1e5
-                    )
-                    
-                    # Add number of particles 
-                    all_particles += n_particles
-                    
-                    group_name += name + 's + '
+                # Get list of particle IDs for this selection
+                current_ids = self._get_particle_ids_from_selection(particle_selection)
+                
+                if not current_ids:
+                    continue
+
+                # Select all entries with these particle IDs
+                subset = self.particle_tracks[self.particle_tracks["particle_id"].isin(current_ids)]
+                
+                if subset.empty:
+                   continue
+
+                # Create the histogram 
+                n_particles, bins = np.histogram(subset.z_start,
+                                                bins = np.arange(0,shower_start,0.1)*1e5
+                )
+                
                 # Now we are done with all subnames and plot things 
                 bin_centres = (bins[:-1]+bins[1:])/2.
 
-                ax.plot(bin_centres *1e-5, all_particles, c = color)
+                ax.plot(bin_centres *1e-5, n_particles, c=color)
                     
-                    # Add solid color line for legend
+                # Add solid color line for legend
                 legend_handles.append(plt.Line2D([0], [0],
                                     color=color, 
                                     lw=2, 
-                                    label=group_name[:-3])
+                                    label=particle_selection)
                 )
             
         plt.legend(handles=legend_handles)
