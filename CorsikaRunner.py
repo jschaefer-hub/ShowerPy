@@ -3,6 +3,110 @@ import random
 from astropy import units as u
 import uuid
 
+# ------------------------
+# Shared particle map
+# ------------------------
+
+particle_map = {
+    # ------------------------
+    # Basics
+    # ------------------------
+    # Table 4, Page 123 CORSIKA Guide
+    "gamma": 1,
+    "e+": 2, "positron": 2,
+    "e-": 3, "electron": 3,
+    "mu+": 5, "antimuon": 5,
+    "mu-": 6, "muon": 6,
+    "pi0": 7,
+    "pi+": 8,
+    "pi-": 9,
+    "K0_L": 10,
+    "K+": 11,
+    "K-": 12,
+    "n": 13, "neutron": 13,
+    "p": 14, "proton": 14,
+    "p_bar": 15, "antiproton": 15,
+    "K0_S": 16,
+    "eta": 17,
+    "Lambda": 18,
+    "Sigma+": 19,
+    "Sigma0": 20,
+    "Sigma-": 21,
+    "Xi0": 22,
+    "Xi-": 23,
+    "Omega-": 24,
+    "n_bar": 25,
+    "Lambda_bar": 26,
+    "Sigma_bar-": 27,
+    "Sigma_bar0": 28,
+    "Sigma_bar+": 29,
+    "Xi_bar0": 30,
+    "Xi_bar+": 31,
+    "Omega_bar+": 32,
+    "eta_prime": 48,
+    "phi": 49,
+    "omega": 50,
+    "rho0": 51,
+    "rho+": 52,
+    "rho-": 53,
+    "Delta++": 54,
+    "Delta+": 55,
+    "Delta0": 56,
+    "Delta-": 57,
+    "Delta_bar--": 58,
+    "Delta_bar-": 59,
+    "Delta_bar0": 60,
+    "Delta_bar+": 61,
+    "K*0": 62,
+    "K*+": 63,
+    "K*-": 64,
+    "K*0_bar": 65,
+    "nu_e": 66,
+    "nu_e_bar": 67,
+    "nu_mu": 68,
+    "nu_mu_bar": 69,
+    
+    # ------------------------
+    # Charmed and Heavy Mesons/Baryons 
+    # ------------------------
+    # Table 4, Page 124 CORSIKA Guide
+    "D0": 116, "D+": 117, "D-": 118, "D0_bar": 119,
+    "J/psi": 130,
+    "tau+": 131, "tau-": 132,
+    "nu_tau": 133, "nu_tau_bar": 134,
+    "Lambda_c+": 137,
+      
+    # ------------------------
+    #        Nuclei
+    # ------------------------
+    # Note: ID = A * 100 + Z
+    "helium": 402,   
+    "lithium": 703,  
+    "beryllium": 904,  
+    "boron": 1105, 
+    "carbon": 1206,  
+    "nitrogen": 1407,
+    "oxygen": 1608, 
+    "flourine": 1909, 
+    "neon": 2010, 
+    "sodium": 2311, 
+    "magnesium": 2412, 
+    "aluminium": 2713, 
+    "silicon": 2814, 
+    "phosphorus": 3115, 
+    "sulfur": 3216, 
+    "chlorine": 3517, 
+    "argon": 4018, 
+    "potassium": 3919,
+    "calcium": 4020,
+    "scandium": 4521,
+    "titanium": 4822,
+    "vanadium": 5123,
+    "chromium": 5224, 
+    "manganese": 5525,
+    "iron": 5626
+}
+
 class CorsikaRunner:
     """
     A class to configure and run CORSIKA simulations.
@@ -51,39 +155,7 @@ class CorsikaRunner:
         }
 
         # Mapping between CORSIKA particle ID and particle name
-        self.particle_map = {
-            "gamma": 1,
-            "electron": 2,
-            "positron": 3,
-            "muon": 5,
-            "antimuon": 6,
-            "proton": 14,
-            "helium": 402,
-            "lithium": 703,
-            "beryllium": 904,
-            "boron": 1105,
-            "carbon": 1206,
-            "nitrogen": 1407,
-            "oxygen": 1608,
-            "fluorine": 1909,
-            "neon": 2010,
-            "sodium": 2311,
-            "magnesium": 2412,
-            "aluminium": 2713,
-            "silicon": 2814,
-            "phosphorus": 3115,
-            "sulfur": 3216,
-            "chlorine": 3517,
-            "argon": 3618,
-            "potassium": 3919,
-            "calcium": 4020,
-            "scandium": 4321,
-            "titanium": 4422,
-            "vanadium": 4723,
-            "chromium": 4824,
-            "manganese": 5125,
-            "iron": 5626,
-        }
+        self.particle_map = particle_map
 
     def configure_run(
         self,
@@ -246,7 +318,7 @@ class CorsikaRunner:
         
         # Delete the output dir if it exists
         os.system(
-            f"rm -rf {self.current_config["path_output"]}"
+            f"rm -rf {self.current_config['path_output']}"
         )
         
         # Make sure the user output directory exists
@@ -255,7 +327,7 @@ class CorsikaRunner:
         # Copy over files from temp directory to user-specified one 
         _path_tmp_dir = os.path.join(os.path.dirname(self.path_corsika_executable), self.temp_output_dir)
         os.system(
-            f"cp {_path_tmp_dir}/* {self.current_config["path_output"]}"
+            f"cp {_path_tmp_dir}/* {self.current_config['path_output']}"
         )
         
         print('\t-> Cleanup temporary working directory')

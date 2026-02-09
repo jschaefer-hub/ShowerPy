@@ -24,6 +24,6 @@ OBSLEV {observation_level}     // Ground height in cm above sea level
 PLOTSH T                       // Enables writing of particle tracks
 CERSIZ 1                       // Sets the Cherenkov photon bunch size (1 = track every photon)
 *
-TELESCOPE 0. 0. 0. 5000.E2     // Place telescope at origin (x,y,z) with sphere radius (cm)
+TELESCOPE 0. 0. 0. 1000.E2     // Place telescope at origin (x,y,z) with sphere radius (cm)
 TELFIL {output_directory}cherenkov_iact  // Path for the binary Cherenkov output file
 DIRECT {output_directory}      // Sets the directory for standard particle data output

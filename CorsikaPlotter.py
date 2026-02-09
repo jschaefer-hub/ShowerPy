@@ -9,6 +9,8 @@ import matplotlib.colors as colors
 from matplotlib.collections import LineCollection
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
+from CorsikaRunner import particle_map
+
 class CorsikaPlotter:
     """
     A class to load, parse, and visualize CORSIKA simulation data.
@@ -50,39 +52,7 @@ class CorsikaPlotter:
         self.observation_level = None   # Simulated observation level [cm] a.s.l.
         
         # Mapping between CORSIKA particle ID and particle name
-        self.particle_map = {
-            "gamma": 1,
-            "electron": 2,
-            "positron": 3,
-            "muon": 5,
-            "antimuon": 6,
-            "proton": 14,
-            "helium": 402,
-            "lithium": 703,
-            "beryllium": 904,
-            "boron": 1105,
-            "carbon": 1206,
-            "nitrogen": 1407,
-            "oxygen": 1608,
-            "fluorine": 1909,
-            "neon": 2010,
-            "sodium": 2311,
-            "magnesium": 2412,
-            "aluminium": 2713,
-            "silicon": 2814,
-            "phosphorus": 3115,
-            "sulfur": 3216,
-            "chlorine": 3517,
-            "argon": 3618,
-            "potassium": 3919,
-            "calcium": 4020,
-            "scandium": 4321,
-            "titanium": 4422,
-            "vanadium": 4723,
-            "chromium": 4824,
-            "manganese": 5125,
-            "iron": 5626,
-        }
+        self.particle_map = particle_map
 
         # Dictionary to store full paths of available files
         self.file_paths = {
@@ -113,37 +83,60 @@ class CorsikaPlotter:
 
     def _get_particle_ids_from_selection(self, selection_key):
         """
-        Parses a selection key (e.g. 'muon + antimuon', 'lepton', 'hadron')
+        Parses a selection key (e.g., 'muon + antimuon', 'lepton', 'hadron', 'nuclei')
         and returns a list of corresponding CORSIKA particle IDs.
-        
-        Args:
-            selection_key (str): The key from the color_dict, describing particles.
-            
-        Returns:
-            list: List of unique particle IDs.
         """
         # Split by '+' to handle combinations
         subnames = [name.strip() for name in selection_key.split('+')]
         particle_ids = set()
+        
+        # ------------------------
+        # Lepton mapping
+        # ------------------------
+        # Define lepton IDs explicitly
+        lepton_ids = {
+            2, 3,       # e+, e-
+            5, 6,       # mu+, mu-
+            66, 67,     # nu_e, anti_nu_e
+            68, 69,     # nu_mu, anti_nu_mu
+            131, 132,   # tau+, tau-
+            133, 134    # nu_tau, anti_nu_tau
+        }
+        
+        
+        # ------------------------
+        # Hadron mapping
+        # ------------------------
+        # Easier to define what we dont want here
+        # This is just the lepton_ids with gammas (1) excluded
+        non_hadron_ids = lepton_ids | {1}
 
         for name in subnames:
             if name == "lepton":
-                particle_ids.add(2)
-                particle_ids.add(3)
-                particle_ids.add(5)
-                particle_ids.add(6)
-            elif name == "hadron":
-                # All particles except Gamma (1), Electron (2), Positron (3), Muon (5), Antimuon (6)
-                excluded_ids = {1, 2, 3, 5, 6}
+                particle_ids.update(lepton_ids)
+                
+            elif name == "nuclei":
+                # CORSIKA nuclei follow A*100 + Z (e.g., He4 is 402)
+                # Elementary particles stop around ID 195 (Omega_b)
                 for p_name, p_id in self.particle_map.items():
-                    if p_id not in excluded_ids:
+                    if p_id >= 200:
                         particle_ids.add(p_id)
+
+            elif name == "hadron":
+                # All particles in the map EXCEPT Gamma and Leptons
+                for p_name, p_id in self.particle_map.items():
+                    if p_id not in non_hadron_ids:
+                        particle_ids.add(p_id)
+            
             elif name in self.particle_map:
                 particle_ids.add(self.particle_map[name])
+            
             else:
                 print(f"Warning: Unknown particle type '{name}', skipping.")
         
-        return list(particle_ids)
+        # Return intersection with map to ensure IDs exist in current configuration
+        valid_ids = set(self.particle_map.values())
+        return list(particle_ids.intersection(valid_ids))
 
     def _check_available_files(self):
         """
@@ -453,15 +446,16 @@ class CorsikaPlotter:
     def _get_showerstart_height(self):
         # Identify meaningful shower start for plot via z-height distribution
         nparticles, hasl = np.histogram(
-            self.particle_tracks["z_start"] * 1e-5, bins=np.arange(0, 40, 1)
+            self.particle_tracks["z_start"] * 1e-5, bins=np.arange(0, 100, 1)
         )
-        
+
         # Flip arrays to start from higher altitudes going down
         nparticles = np.flip(nparticles)
         hasl = np.flip(hasl)
         
         # Begin Plot one step prior to when more than 10 particles are involved
         shower_start = hasl[np.argmax(nparticles > 10) - 1]
+
         return shower_start 
     
     def plot_side_profile(self, ax=None, alpha=0.4, color_dict=None):
